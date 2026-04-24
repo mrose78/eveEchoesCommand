@@ -210,6 +210,7 @@
   <div class="nav-tab" onclick="showPage('mining')">MINING</div>
   <div class="nav-tab" onclick="showPage('ships')">SHIPS</div>
   <div class="nav-tab" onclick="showPage('safezones')">SAFE ZONES</div>
+  <div class="nav-tab" onclick="showPage('wealth')">WEALTH</div>
 </div>
 
 <div class="main">
@@ -358,11 +359,18 @@
       <div class="stat"><div class="stat-label">Total Ore Mined</div><div class="stat-value" id="m-total-units">—</div></div>
     </div>
 
-    <div class="panel">
-      <div class="panel-header">
-        <div class="panel-title">Ore Efficiency</div>
+    <div class="grid2" style="margin-bottom:20px">
+      <div class="panel" style="margin-bottom:0">
+        <div class="panel-header"><div class="panel-title">Ore Efficiency</div></div>
+        <div class="panel-body" id="m-ore-chart"><div class="empty">No mining data loaded.</div></div>
       </div>
-      <div class="panel-body" id="m-ore-chart"><div class="empty">No mining data loaded.</div></div>
+      <div class="panel" style="margin-bottom:0">
+        <div class="panel-header">
+          <div class="panel-title">Avg ISK Per Unit</div>
+          <div style="font-size:11px;font-family:var(--mono);color:var(--text3)">highest value ore first</div>
+        </div>
+        <div class="panel-body" id="m-perunit-table"><div class="empty">No per-unit data loaded.</div></div>
+      </div>
     </div>
 
     <div class="panel">
@@ -469,6 +477,71 @@
     </div>
   </div>
 
+  <!-- ═══ WEALTH ═══ -->
+  <div class="page" id="page-wealth">
+
+    <!-- Stat row -->
+    <div class="grid4" style="margin-bottom:20px">
+      <div class="stat">
+        <div class="stat-label">Current Balance</div>
+        <div class="stat-value gold" id="eod-current">—</div>
+        <div class="stat-sub" id="eod-current-date"></div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">All-Time High</div>
+        <div class="stat-value green" id="eod-ath">—</div>
+        <div class="stat-sub" id="eod-ath-date"></div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">7-Day Change</div>
+        <div class="stat-value" id="eod-7d">—</div>
+        <div class="stat-sub" id="eod-7d-sub"></div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">30-Day Change</div>
+        <div class="stat-value" id="eod-30d">—</div>
+        <div class="stat-sub" id="eod-30d-sub"></div>
+      </div>
+    </div>
+
+    <!-- Main chart -->
+    <div class="panel" style="margin-bottom:20px">
+      <div class="panel-header">
+        <div class="panel-title">ISK Balance Over Time</div>
+        <div class="filter-bar">
+          <button class="btn" id="eod-btn-all"  onclick="setEodRange('all')">ALL</button>
+          <button class="btn" id="eod-btn-90"   onclick="setEodRange(90)">90D</button>
+          <button class="btn" id="eod-btn-30"   onclick="setEodRange(30)">30D</button>
+          <button class="btn" id="eod-btn-7"    onclick="setEodRange(7)">7D</button>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div style="position:relative;height:320px">
+          <canvas id="eod-chart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Daily gain chart + table -->
+    <div class="grid2">
+      <div class="panel" style="margin-bottom:0">
+        <div class="panel-header"><div class="panel-title">Daily ISK Change</div></div>
+        <div class="panel-body">
+          <div style="position:relative;height:220px">
+            <canvas id="eod-delta-chart"></canvas>
+          </div>
+        </div>
+      </div>
+      <div class="panel" style="margin-bottom:0">
+        <div class="panel-header"><div class="panel-title">End of Day Log</div></div>
+        <div class="panel-body" style="overflow-x:auto;max-height:280px;overflow-y:auto" id="eod-table-wrap">
+          <div class="empty">No data loaded.</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
 </div><!-- /main -->
 
 <!-- SETUP MODAL -->
@@ -513,6 +586,7 @@
   </div>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script>
 // ═══════════════════════════════════════════════════
 // CONFIG
@@ -522,7 +596,8 @@ const DEFAULT_SHEET_ID = '1aYEk4Dy6lou6Lxa5tJeru8vyQqhv0A0wdTcQJdkH-ms';
 // ═══════════════════════════════════════════════════
 // STATE  — populated entirely from sheet
 // ═══════════════════════════════════════════════════
-let data = { character:{}, mining:[], ships:[], safeZones:[] };
+let data = { character:{}, mining:[], ships:[], safeZones:[], endOfDay:[] };
+let eodRange = 'all';
 let shipStatusFilter = 'all';
 let shipFactionFilter = 'all';
 let shipOmegaFilter = 'all';
@@ -574,7 +649,7 @@ function showPage(name){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
   document.getElementById('page-'+name).classList.add('active');
-  const names=['character','overview','mining','ships','safezones'];
+  const names=['character','overview','mining','ships','safezones','wealth'];
   document.querySelectorAll('.nav-tab')[names.indexOf(name)].classList.add('active');
 }
 function openSetupModal(){ document.getElementById('setup-modal').classList.add('open'); }
@@ -629,11 +704,12 @@ async function loadAllFromSheet(){
 
   try {
     // Fetch all tabs in parallel — character tab uses fetchTabRaw to keep all rows
-    const [charRows, miningRows, shipRows, zoneRows] = await Promise.all([
+    const [charRows, miningRows, shipRows, zoneRows, eodRows] = await Promise.all([
       fetchTabRaw('Character'),
       fetchTab('Mining'),
       fetchTab('Ships'),
       fetchTab('SafeZones'),
+      fetchTab('End of Day'),
     ]);
 
     // ── Parse Character ──
@@ -646,9 +722,9 @@ async function loadAllFromSheet(){
     data.character = char;
 
     // ── Parse Mining ──
-    // Cols: Date(0), System(1), Ore(2), Amount(3), ISK(4), Duration(5), Notes(6)
+    // Cols: Date(0), System(1), Ore(2), Amount(3), ISK(4), Duration(5), Notes(6), PerUnit(7)
     data.mining = miningRows.map((r,i) => ({
-      id: i,
+      id:       i,
       date:     r[0] || '',
       system:   r[1] || '',
       ore:      r[2] || '',
@@ -656,7 +732,8 @@ async function loadAllFromSheet(){
       isk:      parseNum(r[4]),
       duration: parseNum(r[5]),
       notes:    r[6] || '',
-    })).filter(r => r.ore || r.system); // skip fully blank rows
+      perUnit:  parseNum(r[7]),
+    })).filter(r => r.ore || r.system);
 
     // ── Parse Ships ──
     // Cols: Name(0), Class(1), Status(2), Price(3), Role(4), Omega(5), Tech(6), Faction(7), Notes(8)
@@ -696,12 +773,20 @@ async function loadAllFromSheet(){
       notes:    r[5] || '',
     })).filter(r => r.name);
 
+    // ── Parse End of Day ──
+    // Cols: Date(0), ISK(1)
+    data.endOfDay = eodRows.map(r => ({
+      date: r[0] || '',
+      isk:  parseNum(r[1]),
+    })).filter(r => r.date && r.isk > 0)
+      .sort((a,b) => new Date(a.date) - new Date(b.date)); // ensure chronological
+
     // Save credentials for reload
     localStorage.setItem('eve_sheet_key', key);
     localStorage.setItem('eve_sheet_id', id);
 
-    setStatus('ok', `⬡ LOADED — ${data.ships.length}S ${data.mining.length}M ${data.safeZones.length}Z`);
-    toast(`Loaded: character · ${data.mining.length} mining · ${data.ships.length} ships · ${data.safeZones.length} zones`, 'ok');
+    setStatus('ok', `⬡ LOADED — ${data.ships.length}S ${data.mining.length}M ${data.endOfDay.length}EOD ${data.safeZones.length}Z`);
+    toast(`Loaded: character · ${data.mining.length} mining · ${data.ships.length} ships · ${data.endOfDay.length} EOD entries · ${data.safeZones.length} zones`, 'ok');
 
     renderAll();
 
@@ -728,6 +813,7 @@ function renderAll(){
   renderMiningTable();
   renderShips();
   renderSafeZones();
+  renderEndOfDay();
   populateFactionDropdown();
   populateTechDropdown();
 }
@@ -947,8 +1033,13 @@ function renderMiningStats(){
   document.getElementById('m-avg-hr').textContent      = formatISK(avgHr);
   document.getElementById('m-total-units').textContent = totalUnits.toLocaleString();
 
+  // ── Ore Efficiency (ISK totals bar chart) ──
   const oreMap = {};
-  data.mining.forEach(m=>{ if(!oreMap[m.ore]) oreMap[m.ore]={isk:0,units:0}; oreMap[m.ore].isk+=m.isk; oreMap[m.ore].units+=m.amount; });
+  data.mining.forEach(m=>{
+    if(!oreMap[m.ore]) oreMap[m.ore]={isk:0,units:0};
+    oreMap[m.ore].isk   += m.isk;
+    oreMap[m.ore].units += m.amount;
+  });
   const ores = Object.entries(oreMap).sort((a,b)=>b[1].isk-a[1].isk);
   const maxIsk = ores.length>0 ? ores[0][1].isk : 1;
   const chart = document.getElementById('m-ore-chart');
@@ -960,6 +1051,48 @@ function renderMiningStats(){
       </div>
       <div class="progress-bar"><div class="progress-fill blue" style="width:${Math.round((d.isk/maxIsk)*100)}%"></div></div>
     </div>`).join('');
+
+  // ── Avg ISK Per Unit ranking ──
+  // Group by ore, average the perUnit values (only rows that have a perUnit > 0)
+  const puMap = {};
+  data.mining.forEach(m => {
+    if(!m.ore || m.perUnit <= 0) return;
+    if(!puMap[m.ore]) puMap[m.ore] = { sum: 0, count: 0, sessions: 0 };
+    puMap[m.ore].sum     += m.perUnit;
+    puMap[m.ore].count   += 1;
+    puMap[m.ore].sessions += 1;
+  });
+
+  const puRanked = Object.entries(puMap)
+    .map(([ore, d]) => ({ ore, avg: d.sum / d.count, sessions: d.sessions }))
+    .sort((a, b) => b.avg - a.avg);
+
+  const puEl = document.getElementById('m-perunit-table');
+  if(puRanked.length === 0){
+    puEl.innerHTML = '<div class="empty">No per-unit data. Add a PerUnit column (col H) to your Mining sheet.</div>';
+  } else {
+    const maxAvg = puRanked[0].avg;
+    // Color tiers: top 25% green, mid 50% gold, bottom 25% muted
+    puEl.innerHTML = puRanked.map((row, i) => {
+      const pct = maxAvg > 0 ? (row.avg / maxAvg) * 100 : 0;
+      const tier = pct >= 75 ? 'var(--green)' : pct >= 40 ? 'var(--gold)' : 'var(--text3)';
+      const rank = i + 1;
+      const rankCol = rank === 1 ? 'var(--gold)' : rank === 2 ? 'var(--text2)' : rank === 3 ? 'var(--orange)' : 'var(--text3)';
+      return `<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid rgba(30,58,90,0.35)">
+        <span style="font-family:var(--mono);font-size:11px;color:${rankCol};min-width:20px;text-align:right">#${rank}</span>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+            <span style="font-size:13px;font-weight:600;color:var(--text)">${row.ore}</span>
+            <span style="font-family:var(--mono);font-size:12px;color:${tier}">${formatISK(row.avg)} ISK/unit</span>
+          </div>
+          <div style="height:4px;background:var(--bg3);border-radius:2px;overflow:hidden">
+            <div style="height:100%;width:${Math.round(pct)}%;background:${tier};border-radius:2px;transition:width 0.5s ease"></div>
+          </div>
+          <div style="font-size:10px;color:var(--text3);font-family:var(--mono);margin-top:3px">${row.sessions} session${row.sessions!==1?'s':''} averaged</div>
+        </div>
+      </div>`;
+    }).join('');
+  }
 }
 
 function renderMiningTable(){
@@ -971,7 +1104,7 @@ function renderMiningTable(){
   if(rows.length===0){ wrap.innerHTML='<div class="empty">No matching sessions.</div>'; return; }
   wrap.innerHTML = `<table>
     <thead><tr>
-      <th>Date</th><th>System</th><th>Ore</th><th>Amount</th><th>ISK Earned</th><th>Duration</th><th>Notes</th>
+      <th>Date</th><th>System</th><th>Ore</th><th>Amount</th><th>ISK Earned</th><th>Per Unit</th><th>Duration</th><th>Notes</th>
     </tr></thead>
     <tbody>${[...rows].reverse().map(m=>`<tr>
       <td style="font-family:var(--mono);font-size:11px;color:var(--text3)">${m.date}</td>
@@ -979,6 +1112,7 @@ function renderMiningTable(){
       <td style="font-weight:600">${m.ore}</td>
       <td style="font-family:var(--mono);color:var(--text2)">${m.amount>0?m.amount.toLocaleString():'—'}</td>
       <td class="isk">${m.isk>0?formatISK(m.isk)+' ISK':'—'}</td>
+      <td style="font-family:var(--mono);color:var(--gold)">${m.perUnit>0?formatISK(m.perUnit)+'/u':'—'}</td>
       <td style="font-family:var(--mono);color:var(--text3)">${m.duration>0?m.duration+'min':'—'}</td>
       <td style="color:var(--text3);font-size:12px">${m.notes||''}</td>
     </tr>`).join('')}</tbody>
@@ -1109,6 +1243,219 @@ function toast(msg, type='ok'){
   const t=document.createElement('div'); t.className='toast '+type; t.textContent=msg;
   document.body.appendChild(t);
   clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.remove(), 4000);
+}
+
+// ═══════════════════════════════════════════════════
+// END OF DAY WEALTH TRACKER
+// ═══════════════════════════════════════════════════
+let eodMainChart = null;
+let eodDeltaChart = null;
+
+function setEodRange(range){
+  eodRange = range;
+  // Update button active styles
+  ['all','90','30','7'].forEach(r => {
+    const btn = document.getElementById(`eod-btn-${r}`);
+    if(btn) btn.style.borderColor = String(range) === r ? 'var(--accent)' : '';
+  });
+  renderEndOfDay();
+}
+
+function getEodSlice(){
+  const all = data.endOfDay;
+  if(eodRange === 'all' || all.length === 0) return all;
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - Number(eodRange));
+  return all.filter(e => new Date(e.date) >= cutoff);
+}
+
+function renderEndOfDay(){
+  const all = data.endOfDay;
+  if(all.length === 0){
+    document.getElementById('eod-current').textContent = '—';
+    document.getElementById('eod-ath').textContent = '—';
+    document.getElementById('eod-7d').textContent = '—';
+    document.getElementById('eod-30d').textContent = '—';
+    document.getElementById('eod-table-wrap').innerHTML = '<div class="empty">No End of Day data loaded.</div>';
+    return;
+  }
+
+  // ── Stat cards ──
+  const latest = all[all.length - 1];
+  const athEntry = all.reduce((best, e) => e.isk > best.isk ? e : best, all[0]);
+
+  document.getElementById('eod-current').textContent      = formatISK(latest.isk);
+  document.getElementById('eod-current-date').textContent = latest.date;
+  document.getElementById('eod-ath').textContent          = formatISK(athEntry.isk);
+  document.getElementById('eod-ath-date').textContent     = athEntry.date;
+
+  function changeStats(daysBack, elVal, elSub){
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - daysBack);
+    const past = [...all].reverse().find(e => new Date(e.date) <= cutoff);
+    if(!past){ document.getElementById(elVal).textContent='—'; document.getElementById(elSub).textContent=''; return; }
+    const diff = latest.isk - past.isk;
+    const pct  = past.isk > 0 ? ((diff / past.isk) * 100).toFixed(1) : '0';
+    const col  = diff >= 0 ? 'var(--green)' : 'var(--red)';
+    const sign = diff >= 0 ? '+' : '';
+    document.getElementById(elVal).textContent      = sign + formatISK(diff);
+    document.getElementById(elVal).style.color      = col;
+    document.getElementById(elSub).textContent      = `${sign}${pct}% vs ${daysBack}d ago`;
+    document.getElementById(elSub).style.color      = col;
+  }
+  changeStats(7,  'eod-7d',  'eod-7d-sub');
+  changeStats(30, 'eod-30d', 'eod-30d-sub');
+
+  // ── Get sliced data for charts ──
+  const slice = getEodSlice();
+  const labels = slice.map(e => e.date);
+  const values = slice.map(e => e.isk);
+
+  // ── Deltas (day-over-day change) ──
+  const deltas = slice.map((e, i) => i === 0 ? 0 : e.isk - slice[i-1].isk);
+  const deltaColors = deltas.map(d => d >= 0 ? 'rgba(57,211,83,0.7)' : 'rgba(255,77,109,0.7)');
+  const deltaBorders = deltas.map(d => d >= 0 ? '#39d353' : '#ff4d6d');
+
+  // ── Main line chart ──
+  const ctx1 = document.getElementById('eod-chart').getContext('2d');
+  if(eodMainChart) eodMainChart.destroy();
+
+  // Build gradient fill
+  const grad = ctx1.createLinearGradient(0, 0, 0, 300);
+  grad.addColorStop(0, 'rgba(0,180,216,0.25)');
+  grad.addColorStop(1, 'rgba(0,180,216,0)');
+
+  eodMainChart = new Chart(ctx1, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'ISK Balance',
+        data: values,
+        borderColor: '#00b4d8',
+        borderWidth: 2,
+        backgroundColor: grad,
+        fill: true,
+        tension: 0.3,
+        pointRadius: slice.length > 30 ? 2 : 4,
+        pointBackgroundColor: '#00b4d8',
+        pointBorderColor: '#04080f',
+        pointBorderWidth: 1,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#0f1c30',
+          borderColor: '#1e3a5a',
+          borderWidth: 1,
+          titleColor: '#8ba7c9',
+          bodyColor: '#e8b84b',
+          titleFont: { family: "'Share Tech Mono'" },
+          bodyFont:  { family: "'Share Tech Mono'" },
+          callbacks: {
+            label: ctx => ' ' + formatISK(ctx.raw) + ' ISK',
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { color: '#4a6a8a', font: { family: "'Share Tech Mono'", size: 10 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 12 },
+          grid:  { color: 'rgba(30,58,90,0.4)' },
+        },
+        y: {
+          ticks: { color: '#4a6a8a', font: { family: "'Share Tech Mono'", size: 10 }, callback: v => formatISK(v) },
+          grid:  { color: 'rgba(30,58,90,0.4)' },
+        }
+      }
+    }
+  });
+
+  // ── Daily delta bar chart ──
+  const ctx2 = document.getElementById('eod-delta-chart').getContext('2d');
+  if(eodDeltaChart) eodDeltaChart.destroy();
+
+  eodDeltaChart = new Chart(ctx2, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Daily Change',
+        data: deltas,
+        backgroundColor: deltaColors,
+        borderColor: deltaBorders,
+        borderWidth: 1,
+        borderRadius: 2,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#0f1c30',
+          borderColor: '#1e3a5a',
+          borderWidth: 1,
+          titleColor: '#8ba7c9',
+          bodyColor: '#ccd6f6',
+          titleFont: { family: "'Share Tech Mono'" },
+          bodyFont:  { family: "'Share Tech Mono'" },
+          callbacks: {
+            label: ctx => {
+              const v = ctx.raw;
+              return ' ' + (v >= 0 ? '+' : '') + formatISK(v) + ' ISK';
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { color: '#4a6a8a', font: { family: "'Share Tech Mono'", size: 10 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 10 },
+          grid:  { color: 'rgba(30,58,90,0.3)' },
+        },
+        y: {
+          ticks: { color: '#4a6a8a', font: { family: "'Share Tech Mono'", size: 10 }, callback: v => formatISK(v) },
+          grid:  { color: 'rgba(30,58,90,0.3)' },
+        }
+      }
+    }
+  });
+
+  // ── Log table (newest first) ──
+  const wrap = document.getElementById('eod-table-wrap');
+  const reversed = [...all].reverse();
+  const prevMap = {};
+  all.forEach((e,i) => { if(i > 0) prevMap[e.date] = all[i-1].isk; });
+
+  wrap.innerHTML = `<table>
+    <thead><tr>
+      <th>Date</th>
+      <th>ISK Balance</th>
+      <th>Day Change</th>
+      <th>% Change</th>
+    </tr></thead>
+    <tbody>${reversed.map(e => {
+      const prev = prevMap[e.date];
+      const diff = prev !== undefined ? e.isk - prev : null;
+      const pct  = prev > 0 && diff !== null ? ((diff / prev) * 100).toFixed(2) : null;
+      const col  = diff === null ? 'var(--text3)' : diff >= 0 ? 'var(--green)' : 'var(--red)';
+      const sign = diff !== null && diff >= 0 ? '+' : '';
+      return `<tr>
+        <td style="font-family:var(--mono);font-size:11px;color:var(--text3)">${e.date}</td>
+        <td style="font-family:var(--mono);color:var(--gold);font-weight:600">${formatISK(e.isk)} ISK</td>
+        <td style="font-family:var(--mono);color:${col}">${diff !== null ? sign + formatISK(diff) : '—'}</td>
+        <td style="font-family:var(--mono);color:${col}">${pct !== null ? sign + pct + '%' : '—'}</td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table>`;
+
+  // Highlight active range button
+  setEodRange(eodRange);
 }
 
 // ═══════════════════════════════════════════════════
