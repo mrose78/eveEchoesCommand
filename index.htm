@@ -211,6 +211,7 @@
   <div class="nav-tab" onclick="showPage('ships')">SHIPS</div>
   <div class="nav-tab" onclick="showPage('safezones')">SAFE ZONES</div>
   <div class="nav-tab" onclick="showPage('wealth')">WEALTH</div>
+  <div class="nav-tab" onclick="showPage('market')">MARKET</div>
 </div>
 
 <div class="main">
@@ -542,6 +543,101 @@
 
   </div>
 
+  <!-- ═══ MARKET ═══ -->
+  <div class="page" id="page-market">
+
+    <!-- Skill buff controls -->
+    <div class="panel" style="margin-bottom:20px">
+      <div class="panel-header">
+        <div class="panel-title">Reprocessing Settings</div>
+        <div style="font-size:11px;font-family:var(--mono);color:var(--text3)">adjust skill levels to match your character — affects all calculations</div>
+      </div>
+      <div class="panel-body">
+        <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-end">
+          <div class="form-group" style="min-width:160px">
+            <label>Reprocessing Skill (0-5)</label>
+            <select id="sk-reprocessing" onchange="renderMarket()">
+              <option value="0">0 — No skill</option>
+              <option value="1">1 — +3%</option>
+              <option value="2">2 — +6%</option>
+              <option value="3">3 — +9%</option>
+              <option value="4">4 — +12%</option>
+              <option value="5" selected>5 — +15% (max)</option>
+            </select>
+          </div>
+          <div class="form-group" style="min-width:160px">
+            <label>Reprocessing Efficiency (0-5)</label>
+            <select id="sk-efficiency" onchange="renderMarket()">
+              <option value="0">0 — No skill</option>
+              <option value="1">1 — +2%</option>
+              <option value="2">2 — +4%</option>
+              <option value="3">3 — +6%</option>
+              <option value="4">4 — +8%</option>
+              <option value="5" selected>5 — +10% (max)</option>
+            </select>
+          </div>
+          <div class="form-group" style="min-width:160px">
+            <label>Ore-Specific Reprocessing (0-5)</label>
+            <select id="sk-ore-specific" onchange="renderMarket()">
+              <option value="0">0 — No skill</option>
+              <option value="1">1 — +2%</option>
+              <option value="2">2 — +4%</option>
+              <option value="3">3 — +6%</option>
+              <option value="4">4 — +8%</option>
+              <option value="5">5 — +10% (max)</option>
+            </select>
+          </div>
+          <div class="form-group" style="min-width:140px">
+            <label>Station Tax (%)</label>
+            <input type="number" id="sk-station-tax" value="5" min="0" max="100" step="0.5" oninput="renderMarket()" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:7px 10px;font-family:var(--mono);font-size:12px;border-radius:3px;outline:none;width:100%">
+          </div>
+          <div style="font-family:var(--mono);font-size:11px;color:var(--text2);padding-bottom:8px">
+            Effective yield: <span id="mk-yield-display" style="color:var(--accent);font-size:14px;font-weight:700">—%</span>
+            <div style="color:var(--text3);font-size:10px;margin-top:2px">Base 50% × skills × (1 - tax)</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Top picks summary -->
+    <div class="grid3" style="margin-bottom:20px" id="mk-top-cards">
+      <div class="stat"><div class="stat-label">Best Ore to Sell</div><div class="stat-value gold" id="mk-best-ore">—</div><div class="stat-sub" id="mk-best-ore-sub"></div></div>
+      <div class="stat"><div class="stat-label">Best Mineral</div><div class="stat-value accent" id="mk-best-mineral">—</div><div class="stat-sub" id="mk-best-mineral-sub"></div></div>
+      <div class="stat"><div class="stat-label">Best Gas</div><div class="stat-value" style="color:var(--purple)" id="mk-best-gas">—</div><div class="stat-sub" id="mk-best-gas-sub"></div></div>
+    </div>
+
+    <!-- Main comparison table -->
+    <div class="panel" style="margin-bottom:20px">
+      <div class="panel-header">
+        <div class="panel-title">Raw vs Reprocessed — Profitability</div>
+        <div class="filter-bar">
+          <button class="btn" onclick="setMkFilter('all')" id="mk-btn-all">ALL</button>
+          <button class="btn" onclick="setMkFilter('ore')" id="mk-btn-ore">ORE</button>
+          <button class="btn" onclick="setMkFilter('mineral')" id="mk-btn-mineral">MINERAL</button>
+          <button class="btn" onclick="setMkFilter('gas')" id="mk-btn-gas">GAS</button>
+          <select class="filter-select" id="mk-sort" onchange="renderMarket()">
+            <option value="reprocessed">Sort: Best Reprocessed</option>
+            <option value="raw">Sort: Best Raw</option>
+            <option value="diff">Sort: Biggest Difference</option>
+            <option value="name">Sort: Name A-Z</option>
+          </select>
+        </div>
+      </div>
+      <div class="panel-body" style="overflow-x:auto" id="mk-table-wrap">
+        <div class="empty">Load sheet data to see market analysis.</div>
+      </div>
+    </div>
+
+    <!-- Price freshness -->
+    <div class="panel">
+      <div class="panel-header"><div class="panel-title">Price List</div><div style="font-size:11px;font-family:var(--mono);color:var(--text3)">from your Prices sheet tab</div></div>
+      <div class="panel-body" style="overflow-x:auto" id="mk-price-list">
+        <div class="empty">No price data loaded.</div>
+      </div>
+    </div>
+
+  </div>
+
 </div><!-- /main -->
 
 <!-- SETUP MODAL -->
@@ -596,8 +692,9 @@ const DEFAULT_SHEET_ID = '1aYEk4Dy6lou6Lxa5tJeru8vyQqhv0A0wdTcQJdkH-ms';
 // ═══════════════════════════════════════════════════
 // STATE  — populated entirely from sheet
 // ═══════════════════════════════════════════════════
-let data = { character:{}, mining:[], ships:[], safeZones:[], endOfDay:[] };
+let data = { character:{}, mining:[], ships:[], safeZones:[], endOfDay:[], prices:[] };
 let eodRange = 'all';
+let mkFilter = 'all';
 let shipStatusFilter = 'all';
 let shipFactionFilter = 'all';
 let shipOmegaFilter = 'all';
@@ -649,7 +746,7 @@ function showPage(name){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
   document.getElementById('page-'+name).classList.add('active');
-  const names=['character','overview','mining','ships','safezones','wealth'];
+  const names=['character','overview','mining','ships','safezones','wealth','market'];
   document.querySelectorAll('.nav-tab')[names.indexOf(name)].classList.add('active');
 }
 function openSetupModal(){ document.getElementById('setup-modal').classList.add('open'); }
@@ -704,12 +801,13 @@ async function loadAllFromSheet(){
 
   try {
     // Fetch all tabs in parallel — character tab uses fetchTabRaw to keep all rows
-    const [charRows, miningRows, shipRows, zoneRows, eodRows] = await Promise.all([
+    const [charRows, miningRows, shipRows, zoneRows, eodRows, priceRows] = await Promise.all([
       fetchTabRaw('Character'),
       fetchTab('Mining'),
       fetchTab('Ships'),
       fetchTab('SafeZones'),
       fetchTab('End of Day'),
+      fetchTab('Prices'),
     ]);
 
     // ── Parse Character ──
@@ -781,12 +879,22 @@ async function loadAllFromSheet(){
     })).filter(r => r.date && r.isk > 0)
       .sort((a,b) => new Date(a.date) - new Date(b.date)); // ensure chronological
 
+    // ── Parse Prices ──
+    // Cols: Name(0), Type(1), Price Per Unit(2), Primary Mineral(3), Updated(4)
+    data.prices = priceRows.map(r => ({
+      name:            (r[0] || '').trim(),
+      type:            (r[1] || '').toLowerCase().trim(),
+      pricePerUnit:    parseNum(r[2]),
+      primaryMineral:  (r[3] || '').trim(),
+      updated:         (r[4] || '').trim(),
+    })).filter(r => r.name && r.pricePerUnit > 0);
+
     // Save credentials for reload
     localStorage.setItem('eve_sheet_key', key);
     localStorage.setItem('eve_sheet_id', id);
 
-    setStatus('ok', `⬡ LOADED — ${data.ships.length}S ${data.mining.length}M ${data.endOfDay.length}EOD ${data.safeZones.length}Z`);
-    toast(`Loaded: character · ${data.mining.length} mining · ${data.ships.length} ships · ${data.endOfDay.length} EOD entries · ${data.safeZones.length} zones`, 'ok');
+    setStatus('ok', `⬡ LOADED — ${data.ships.length}S ${data.mining.length}M ${data.endOfDay.length}EOD ${data.prices.length}P`);
+    toast(`Loaded: ${data.mining.length} mining · ${data.ships.length} ships · ${data.endOfDay.length} EOD · ${data.prices.length} prices`, 'ok');
 
     renderAll();
 
@@ -797,10 +905,38 @@ async function loadAllFromSheet(){
   }
 }
 
+// ═══════════════════════════════════════════════════
+// UTILS
+// ═══════════════════════════════════════════════════
 function parseNum(v){
   if(v === undefined || v === null || v === '') return 0;
   const n = parseFloat(String(v).replace(/[,\s]/g,''));
   return isNaN(n) ? 0 : n;
+}
+
+async function fetchTab(tabName){
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${getSheetId()}/values/${encodeURIComponent(tabName)}?key=${getApiKey()}`;
+  const res = await fetch(url);
+  if(!res.ok){
+    const err = await res.json().catch(()=>({}));
+    throw new Error(`${tabName}: HTTP ${res.status} — ${err.error?.message || 'unknown error'}`);
+  }
+  const json = await res.json();
+  const rows = json.values || [];
+  if(rows.length <= 1) return [];
+  return rows.slice(1);
+}
+
+// fetchTabRaw returns ALL rows including row 1 (used for key-value sheets like Character)
+async function fetchTabRaw(tabName){
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${getSheetId()}/values/${encodeURIComponent(tabName)}?key=${getApiKey()}`;
+  const res = await fetch(url);
+  if(!res.ok){
+    const err = await res.json().catch(()=>({}));
+    throw new Error(`${tabName}: HTTP ${res.status} — ${err.error?.message || 'unknown error'}`);
+  }
+  const json = await res.json();
+  return json.values || [];
 }
 
 // ═══════════════════════════════════════════════════
@@ -814,6 +950,7 @@ function renderAll(){
   renderShips();
   renderSafeZones();
   renderEndOfDay();
+  renderMarket();
   populateFactionDropdown();
   populateTechDropdown();
 }
@@ -1228,8 +1365,257 @@ function renderSafeZones(){
 }
 
 // ═══════════════════════════════════════════════════
-// UTILS
+// MARKET — Raw vs Reprocessed Profitability
 // ═══════════════════════════════════════════════════
+
+// EVE Echoes reprocessing yields per 100 units of ore (base, before skill buffs)
+// Format: oreName: { mineral: quantity, ... }
+// Base station reprocessing efficiency = 50%
+const ORE_YIELDS = {
+  // ── High-sec ores (per 100 units) ──
+  'Veldspar':        { Tritanium: 415 },
+  'Concentrated Veldspar': { Tritanium: 457 },
+  'Dense Veldspar':  { Tritanium: 498 },
+  'Scordite':        { Tritanium: 346, Pyerite: 173 },
+  'Condensed Scordite': { Tritanium: 381, Pyerite: 190 },
+  'Massive Scordite': { Tritanium: 415, Pyerite: 208 },
+  'Pyroxeres':       { Tritanium: 351, Pyerite: 25, Mexallon: 50, Nocxium: 5 },
+  'Solid Pyroxeres': { Tritanium: 387, Pyerite: 28, Mexallon: 55, Nocxium: 6 },
+  'Viscous Pyroxeres':{ Tritanium: 422, Pyerite: 30, Mexallon: 60, Nocxium: 6 },
+  'Plagioclase':     { Tritanium: 107, Pyerite: 213, Mexallon: 107 },
+  'Azure Plagioclase':{ Tritanium: 118, Pyerite: 235, Mexallon: 118 },
+  'Rich Plagioclase': { Tritanium: 128, Pyerite: 256, Mexallon: 128 },
+  'Omber':           { Tritanium: 85, Pyerite: 34, Isogen: 85 },
+  'Silvery Omber':   { Tritanium: 94, Pyerite: 38, Isogen: 94 },
+  'Golden Omber':    { Tritanium: 102, Pyerite: 41, Isogen: 102 },
+  // ── Low-sec ores ──
+  'Kernite':         { Tritanium: 134, Mexallon: 267, Isogen: 134 },
+  'Luminous Kernite':{ Tritanium: 148, Mexallon: 294, Isogen: 148 },
+  'Fiery Kernite':   { Tritanium: 161, Mexallon: 320, Isogen: 161 },
+  'Jaspet':          { Mexallon: 259, Nocxium: 130, Zydrine: 8 },
+  'Pure Jaspet':     { Mexallon: 285, Nocxium: 143, Zydrine: 9 },
+  'Pristine Jaspet': { Mexallon: 311, Nocxium: 156, Zydrine: 10 },
+  'Hemorphite':      { Tritanium: 180, Isogen: 90, Nocxium: 360, Zydrine: 10 },
+  'Vivid Hemorphite':{ Tritanium: 198, Isogen: 99, Nocxium: 396, Zydrine: 11 },
+  'Radiant Hemorphite':{ Tritanium: 216, Isogen: 108, Nocxium: 432, Zydrine: 12 },
+  'Hedbergite':      { Pyerite: 180, Isogen: 180, Nocxium: 180, Zydrine: 32 },
+  'Vitric Hedbergite':{ Pyerite: 198, Isogen: 198, Nocxium: 198, Zydrine: 35 },
+  'Glazed Hedbergite':{ Pyerite: 216, Isogen: 216, Nocxium: 216, Zydrine: 38 },
+  // ── Null-sec ores ──
+  'Gneiss':          { Tritanium: 171, Mexallon: 171, Isogen: 171, Zydrine: 35 },
+  'Iridescent Gneiss':{ Tritanium: 188, Mexallon: 188, Isogen: 188, Zydrine: 39 },
+  'Prismatic Gneiss': { Tritanium: 205, Mexallon: 205, Isogen: 205, Zydrine: 42 },
+  'Dark Ochre':      { Tritanium: 250, Isogen: 250, Nocxium: 375, Zydrine: 63 },
+  'Onyx Ochre':      { Tritanium: 275, Isogen: 275, Nocxium: 413, Zydrine: 69 },
+  'Obsidian Ochre':  { Tritanium: 300, Isogen: 300, Nocxium: 450, Zydrine: 75 },
+  'Crokite':         { Tritanium: 331, Nocxium: 663, Zydrine: 100 },
+  'Sharp Crokite':   { Tritanium: 364, Nocxium: 729, Zydrine: 110 },
+  'Crystalline Crokite':{ Tritanium: 397, Nocxium: 795, Zydrine: 120 },
+  'Bistot':          { Pyerite: 170, Zydrine: 341, Megacyte: 170 },
+  'Triclinic Bistot':{ Pyerite: 187, Zydrine: 375, Megacyte: 187 },
+  'Monoclinic Bistot':{ Pyerite: 204, Zydrine: 409, Megacyte: 204 },
+  'Arkonor':         { Tritanium: 300, Mexallon: 150, Megacyte: 150, Zydrine: 75 },
+  'Crimson Arkonor': { Tritanium: 330, Mexallon: 165, Megacyte: 165, Zydrine: 83 },
+  'Prime Arkonor':   { Tritanium: 360, Mexallon: 180, Megacyte: 180, Zydrine: 90 },
+  'Mercoxit':        { Morphite: 140 },
+  'Magma Mercoxit':  { Morphite: 154 },
+  'Vitreous Mercoxit':{ Morphite: 168 },
+};
+
+// Skill multiplier formula:
+// effectiveYield = baseYield × (1 + 0.03×reprocessing) × (1 + 0.02×efficiency) × (1 + 0.02×oreSpecific) × stationBase
+// stationBase = 0.5 (standard NPC station), after station tax
+function calcYieldMultiplier(){
+  const rp  = parseInt(document.getElementById('sk-reprocessing')?.value  || 5);
+  const eff = parseInt(document.getElementById('sk-efficiency')?.value     || 5);
+  const ore = parseInt(document.getElementById('sk-ore-specific')?.value   || 0);
+  const tax = parseFloat(document.getElementById('sk-station-tax')?.value  || 5) / 100;
+  const base = 0.50;
+  const mult = base
+    * (1 + 0.03 * rp)
+    * (1 + 0.02 * eff)
+    * (1 + 0.02 * ore)
+    * (1 - tax);
+  return Math.min(mult, 1.0); // can't exceed 100%
+}
+
+function setMkFilter(f){
+  mkFilter = f;
+  ['all','ore','mineral','gas'].forEach(t => {
+    const btn = document.getElementById(`mk-btn-${t}`);
+    if(btn) btn.style.borderColor = t === f ? 'var(--accent)' : '';
+  });
+  renderMarket();
+}
+
+function renderMarket(){
+  if(data.prices.length === 0){
+    document.getElementById('mk-table-wrap').innerHTML = '<div class="empty">No price data loaded. Check your Prices sheet tab exists with Name, Type, Price Per Unit columns.</div>';
+    return;
+  }
+
+  const yieldMult = calcYieldMultiplier();
+  const yieldPct  = (yieldMult * 100).toFixed(1);
+  const yieldEl   = document.getElementById('mk-yield-display');
+  if(yieldEl) yieldEl.textContent = yieldPct + '%';
+
+  // Build price lookup map
+  const priceMap = {};
+  data.prices.forEach(p => { priceMap[p.name.toLowerCase()] = p; });
+
+  function getPrice(name){ const p = priceMap[name.toLowerCase()]; return p ? p.pricePerUnit : 0; }
+
+  // ── Build rows for all items in Prices sheet ──
+  const rows = [];
+
+  data.prices.forEach(item => {
+    const rawPrice = item.pricePerUnit;
+    let reprocessedValue = null;
+    let minerals = [];
+
+    if(item.type === 'ore'){
+      // Look up yield table (try exact name, then lowercase match)
+      const yieldKey = Object.keys(ORE_YIELDS).find(k => k.toLowerCase() === item.name.toLowerCase());
+      if(yieldKey){
+        const yields = ORE_YIELDS[yieldKey];
+        let total = 0;
+        minerals = Object.entries(yields).map(([min, qty]) => {
+          // yields are per 100 units, so per-unit = qty/100
+          const minPrice = getPrice(min);
+          const minValue = (qty / 100) * yieldMult * minPrice;
+          total += minValue;
+          return { name: min, qty: qty / 100, price: minPrice, value: minValue };
+        });
+        reprocessedValue = total;
+      }
+    }
+    // Minerals and gases: reprocessing doesn't apply — just show raw price
+    // but we still include them in the ranked table for comparison
+
+    const diff      = reprocessedValue !== null ? reprocessedValue - rawPrice : null;
+    const diffPct   = rawPrice > 0 && diff !== null ? (diff / rawPrice) * 100 : null;
+    const better    = diff === null ? 'raw' : diff > 0 ? 'reprocess' : 'raw';
+
+    rows.push({
+      name: item.name,
+      type: item.type,
+      rawPrice,
+      reprocessedValue,
+      diff,
+      diffPct,
+      better,
+      minerals,
+      updated: item.updated,
+      primaryMineral: item.primaryMineral,
+    });
+  });
+
+  // ── Top picks ──
+  const ores     = rows.filter(r => r.type === 'ore');
+  const minerals = rows.filter(r => r.type === 'mineral');
+  const gases    = rows.filter(r => r.type === 'gas');
+
+  const bestOre = [...ores].sort((a,b) => Math.max(b.rawPrice, b.reprocessedValue||0) - Math.max(a.rawPrice, a.reprocessedValue||0))[0];
+  const bestMin = [...minerals].sort((a,b) => b.rawPrice - a.rawPrice)[0];
+  const bestGas = [...gases].sort((a,b) => b.rawPrice - a.rawPrice)[0];
+
+  if(bestOre){
+    document.getElementById('mk-best-ore').textContent     = bestOre.name;
+    document.getElementById('mk-best-ore-sub').textContent = formatISK(Math.max(bestOre.rawPrice, bestOre.reprocessedValue||0)) + ' ISK/unit best value';
+  }
+  if(bestMin){
+    document.getElementById('mk-best-mineral').textContent     = bestMin.name;
+    document.getElementById('mk-best-mineral-sub').textContent = formatISK(bestMin.rawPrice) + ' ISK/unit';
+  }
+  if(bestGas){
+    document.getElementById('mk-best-gas').textContent     = bestGas.name;
+    document.getElementById('mk-best-gas-sub').textContent = formatISK(bestGas.rawPrice) + ' ISK/unit';
+  }
+  if(!bestOre)  document.getElementById('mk-best-ore').textContent = 'No ores';
+  if(!bestMin)  document.getElementById('mk-best-mineral').textContent = 'No minerals';
+  if(!bestGas)  document.getElementById('mk-best-gas').textContent = 'No gases';
+
+  // ── Filter ──
+  let filtered = rows;
+  if(mkFilter !== 'all') filtered = filtered.filter(r => r.type === mkFilter);
+
+  // ── Sort ──
+  const sortVal = document.getElementById('mk-sort')?.value || 'reprocessed';
+  if(sortVal === 'reprocessed') filtered.sort((a,b) => (Math.max(b.rawPrice, b.reprocessedValue||b.rawPrice)) - (Math.max(a.rawPrice, a.reprocessedValue||a.rawPrice)));
+  else if(sortVal === 'raw')    filtered.sort((a,b) => b.rawPrice - a.rawPrice);
+  else if(sortVal === 'diff')   filtered.sort((a,b) => Math.abs(b.diff||0) - Math.abs(a.diff||0));
+  else if(sortVal === 'name')   filtered.sort((a,b) => a.name.localeCompare(b.name));
+
+  // ── Main table ──
+  const wrap = document.getElementById('mk-table-wrap');
+  if(filtered.length === 0){ wrap.innerHTML = '<div class="empty">No items match this filter.</div>'; return; }
+
+  const typeColor = { ore:'var(--gold)', mineral:'var(--accent)', gas:'var(--purple)' };
+
+  wrap.innerHTML = filtered.map(r => {
+    const rawCol  = r.better === 'raw' ? 'var(--green)' : 'var(--text2)';
+    const repCol  = r.better === 'reprocess' ? 'var(--green)' : 'var(--text2)';
+    const winBadge = r.better === 'reprocess'
+      ? `<span style="padding:2px 7px;border-radius:2px;font-size:10px;font-family:var(--mono);font-weight:700;color:var(--green);background:rgba(57,211,83,0.1);border:1px solid rgba(57,211,83,0.25)">REPROCESS ▲</span>`
+      : `<span style="padding:2px 7px;border-radius:2px;font-size:10px;font-family:var(--mono);font-weight:700;color:var(--gold);background:rgba(232,184,75,0.1);border:1px solid rgba(232,184,75,0.25)">SELL RAW ▲</span>`;
+
+    const diffStr = r.diff !== null
+      ? `<span style="color:${r.diff>=0?'var(--green)':'var(--red)'};font-family:var(--mono);font-size:12px">${r.diff>=0?'+':''}${formatISK(r.diff)}</span>
+         <span style="color:var(--text3);font-size:10px;font-family:var(--mono);margin-left:4px">(${r.diffPct>=0?'+':''}${r.diffPct.toFixed(1)}%)</span>`
+      : '<span style="color:var(--text3);font-size:11px">N/A</span>';
+
+    const mineralsStr = r.minerals.length > 0
+      ? r.minerals.map(m => `<span style="font-size:10px;font-family:var(--mono);color:var(--text3)">${m.name}: ${m.qty.toFixed(2)}/u → <span style="color:var(--text2)">${formatISK(m.value)}</span></span>`).join(' &nbsp;·&nbsp; ')
+      : '—';
+
+    return `<div style="padding:12px 0;border-bottom:1px solid rgba(30,58,90,0.4)">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px">
+        <span style="font-size:14px;font-weight:700;color:var(--text);min-width:140px">${r.name}</span>
+        <span style="font-size:10px;font-family:var(--mono);color:${typeColor[r.type]||'var(--text3)'};border:1px solid ${typeColor[r.type]||'var(--border)'};padding:1px 6px;border-radius:2px;text-transform:uppercase">${r.type}</span>
+        ${winBadge}
+        <span style="margin-left:auto;font-size:11px;color:var(--text3);font-family:var(--mono)">${r.updated ? 'Updated: '+r.updated : ''}</span>
+      </div>
+      <div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:4px">
+        <div>
+          <div style="font-size:10px;letter-spacing:1px;color:var(--text3);font-family:var(--mono);margin-bottom:2px">SELL RAW</div>
+          <div style="font-size:16px;font-weight:700;color:${rawCol};font-family:var(--mono)">${formatISK(r.rawPrice)} <span style="font-size:11px;font-weight:400">ISK/unit</span></div>
+        </div>
+        ${r.reprocessedValue !== null ? `<div>
+          <div style="font-size:10px;letter-spacing:1px;color:var(--text3);font-family:var(--mono);margin-bottom:2px">REPROCESSED (${yieldPct}% yield)</div>
+          <div style="font-size:16px;font-weight:700;color:${repCol};font-family:var(--mono)">${formatISK(r.reprocessedValue)} <span style="font-size:11px;font-weight:400">ISK/unit</span></div>
+        </div>
+        <div>
+          <div style="font-size:10px;letter-spacing:1px;color:var(--text3);font-family:var(--mono);margin-bottom:2px">DIFFERENCE</div>
+          <div style="font-size:14px;margin-top:2px">${diffStr}</div>
+        </div>` : ''}
+      </div>
+      ${r.minerals.length > 0 ? `<div style="margin-top:4px;padding:6px 8px;background:var(--bg3);border-radius:3px;border:1px solid var(--border);display:flex;flex-wrap:wrap;gap:8px">${mineralsStr}</div>` : ''}
+    </div>`;
+  }).join('');
+
+  // ── Price list panel ──
+  const pl = document.getElementById('mk-price-list');
+  const typeOrder = { ore: 0, mineral: 1, gas: 2 };
+  const sorted = [...data.prices].sort((a,b) => (typeOrder[a.type]??3) - (typeOrder[b.type]??3) || a.name.localeCompare(b.name));
+
+  pl.innerHTML = `<table>
+    <thead><tr>
+      <th>Name</th><th>Type</th><th>Price / Unit</th><th>Primary Mineral</th><th>Last Updated</th>
+    </tr></thead>
+    <tbody>${sorted.map(p => `<tr>
+      <td style="font-weight:600">${p.name}</td>
+      <td><span style="font-size:10px;font-family:var(--mono);color:${typeColor[p.type]||'var(--text3)'};border:1px solid ${typeColor[p.type]||'var(--border)'};padding:1px 6px;border-radius:2px;text-transform:uppercase">${p.type}</span></td>
+      <td style="font-family:var(--mono);color:var(--gold)">${formatISK(p.pricePerUnit)} ISK</td>
+      <td style="color:var(--text2);font-size:12px">${p.primaryMineral||'—'}</td>
+      <td style="color:var(--text3);font-family:var(--mono);font-size:11px">${p.updated||'—'}</td>
+    </tr>`).join('')}</tbody>
+  </table>`;
+
+  // Highlight active filter
+  setMkFilter(mkFilter);
+}
+
+
 function formatISK(n){
   if(n>=1e9) return (n/1e9).toFixed(2)+'B';
   if(n>=1e6) return (n/1e6).toFixed(2)+'M';
