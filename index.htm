@@ -517,8 +517,8 @@
         </div>
       </div>
       <div class="panel-body">
-        <div style="position:relative;height:320px">
-          <canvas id="eod-chart"></canvas>
+        <div style="overflow-x:auto">
+          <svg id="eod-main-svg" viewBox="0 0 860 280" width="100%" style="display:block;min-width:400px"></svg>
         </div>
       </div>
     </div>
@@ -528,8 +528,8 @@
       <div class="panel" style="margin-bottom:0">
         <div class="panel-header"><div class="panel-title">Daily ISK Change</div></div>
         <div class="panel-body">
-          <div style="position:relative;height:220px">
-            <canvas id="eod-delta-chart"></canvas>
+          <div style="overflow-x:auto">
+            <svg id="eod-delta-svg" viewBox="0 0 860 200" width="100%" style="display:block;min-width:400px"></svg>
           </div>
         </div>
       </div>
@@ -604,6 +604,44 @@
       <div class="stat"><div class="stat-label">Best Ore to Sell</div><div class="stat-value gold" id="mk-best-ore">—</div><div class="stat-sub" id="mk-best-ore-sub"></div></div>
       <div class="stat"><div class="stat-label">Best Mineral</div><div class="stat-value accent" id="mk-best-mineral">—</div><div class="stat-sub" id="mk-best-mineral-sub"></div></div>
       <div class="stat"><div class="stat-label">Best Gas</div><div class="stat-value" style="color:var(--purple)" id="mk-best-gas">—</div><div class="stat-sub" id="mk-best-gas-sub"></div></div>
+    </div>
+
+    <!-- Jump Point / Favorites selector -->
+    <div class="panel" style="margin-bottom:20px">
+      <div class="panel-header">
+        <div class="panel-title">Jump Point Filter</div>
+        <div style="font-size:11px;font-family:var(--mono);color:var(--text3)">select what's available at your current location</div>
+      </div>
+      <div class="panel-body">
+        <!-- Favorites row -->
+        <div style="margin-bottom:14px">
+          <div style="font-size:10px;letter-spacing:2px;color:var(--text3);font-family:var(--mono);margin-bottom:8px">FAVORITES</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center" id="jp-favorites-row">
+            <div style="color:var(--text3);font-size:12px;font-family:var(--mono)">No favorites saved yet.</div>
+          </div>
+        </div>
+        <div class="divider"></div>
+        <!-- Item picker -->
+        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px">
+          <div style="flex:1;min-width:220px">
+            <div style="font-size:10px;letter-spacing:2px;color:var(--text3);font-family:var(--mono);margin-bottom:6px">SELECT ITEMS AVAILABLE AT THIS JUMP POINT</div>
+            <div id="jp-item-grid" style="display:flex;flex-wrap:wrap;gap:6px;max-height:160px;overflow-y:auto;padding:2px">
+              <div style="color:var(--text3);font-size:12px;font-family:var(--mono)">Load price data first.</div>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;min-width:200px">
+            <button class="btn green" onclick="applyJpFilter()" style="width:100%">⬡ APPLY FILTER</button>
+            <button class="btn" onclick="clearJpFilter()" style="width:100%">SHOW ALL</button>
+            <div style="display:flex;gap:6px">
+              <input type="text" id="jp-save-name" placeholder="Favorite name..." style="flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:6px 8px;font-family:var(--mono);font-size:11px;border-radius:3px;outline:none">
+              <button class="btn gold" onclick="saveJpFavorite()" style="padding:5px 10px">SAVE</button>
+            </div>
+          </div>
+        </div>
+        <div style="font-size:11px;font-family:var(--mono);color:var(--text3)">
+          Selected: <span id="jp-selected-count" style="color:var(--accent)">all</span>
+        </div>
+      </div>
     </div>
 
     <!-- Main comparison table -->
@@ -682,7 +720,6 @@
   </div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script>
 // ═══════════════════════════════════════════════════
 // CONFIG
@@ -695,6 +732,8 @@ const DEFAULT_SHEET_ID = '1aYEk4Dy6lou6Lxa5tJeru8vyQqhv0A0wdTcQJdkH-ms';
 let data = { character:{}, mining:[], ships:[], safeZones:[], endOfDay:[], prices:[] };
 let eodRange = 'all';
 let mkFilter = 'all';
+let jpSelection = new Set(); // empty = show all
+let jpFavorites = JSON.parse(localStorage.getItem('eve_jp_favorites') || '[]');
 let shipStatusFilter = 'all';
 let shipFactionFilter = 'all';
 let shipOmegaFilter = 'all';
@@ -748,6 +787,7 @@ function showPage(name){
   document.getElementById('page-'+name).classList.add('active');
   const names=['character','overview','mining','ships','safezones','wealth','market'];
   document.querySelectorAll('.nav-tab')[names.indexOf(name)].classList.add('active');
+  if(name === 'wealth' && data.endOfDay.length > 0) renderEndOfDay();
 }
 function openSetupModal(){ document.getElementById('setup-modal').classList.add('open'); }
 function closeSetupModal(){ document.getElementById('setup-modal').classList.remove('open'); }
@@ -949,10 +989,10 @@ function renderAll(){
   renderMiningTable();
   renderShips();
   renderSafeZones();
-  renderEndOfDay();
   renderMarket();
   populateFactionDropdown();
   populateTechDropdown();
+  // renderEndOfDay is deferred — called only when WEALTH tab is opened
 }
 
 // ═══════════════════════════════════════════════════
@@ -1365,6 +1405,131 @@ function renderSafeZones(){
 }
 
 // ═══════════════════════════════════════════════════
+// JUMP POINT SELECTOR
+// ═══════════════════════════════════════════════════
+
+function buildJpItemGrid(){
+  const grid = document.getElementById('jp-item-grid');
+  if(!grid || data.prices.length === 0) return;
+
+  // Group by type for display order: ore first, then gas, then mineral
+  const typeOrder = { ore:0, gas:1, mineral:2 };
+  const sorted = [...data.prices]
+    .filter(p => p.type !== 'mineral') // minerals aren't "found" at jump points
+    .sort((a,b) => (typeOrder[a.type]??9) - (typeOrder[b.type]??9) || a.name.localeCompare(b.name));
+
+  const typeColor = { ore:'var(--gold)', gas:'var(--purple)', mineral:'var(--accent)' };
+
+  grid.innerHTML = sorted.map(p => {
+    const isSelected = jpSelection.size === 0 || jpSelection.has(p.name);
+    const col = typeColor[p.type] || 'var(--text2)';
+    return `<div id="jp-chip-${CSS.escape(p.name)}"
+      onclick="toggleJpItem('${p.name.replace(/'/g,"\\'")}')"
+      style="padding:4px 10px;border-radius:3px;font-size:11px;font-family:var(--mono);cursor:pointer;transition:all 0.15s;
+        border:1px solid ${isSelected ? col : 'var(--border)'};
+        background:${isSelected ? col+'22' : 'var(--bg3)'};
+        color:${isSelected ? col : 'var(--text3)'};
+        user-select:none">
+      ${p.name}
+    </div>`;
+  }).join('');
+}
+
+function toggleJpItem(name){
+  // If currently showing all, switch to explicit selection of everything then deselect this one
+  if(jpSelection.size === 0){
+    data.prices.filter(p => p.type !== 'mineral').forEach(p => jpSelection.add(p.name));
+  }
+  if(jpSelection.has(name)) jpSelection.delete(name);
+  else jpSelection.add(name);
+
+  // Re-render just the chip
+  const chip = document.getElementById(`jp-chip-${CSS.escape(name)}`);
+  const p = data.prices.find(x => x.name === name);
+  if(chip && p){
+    const typeColor = { ore:'var(--gold)', gas:'var(--purple)', mineral:'var(--accent)' };
+    const col = typeColor[p.type] || 'var(--text2)';
+    const sel = jpSelection.has(name);
+    chip.style.border = `1px solid ${sel ? col : 'var(--border)'}`;
+    chip.style.background = sel ? col+'22' : 'var(--bg3)';
+    chip.style.color = sel ? col : 'var(--text3)';
+  }
+  updateJpCount();
+}
+
+function updateJpCount(){
+  const el = document.getElementById('jp-selected-count');
+  if(!el) return;
+  if(jpSelection.size === 0) el.textContent = 'all';
+  else el.textContent = `${jpSelection.size} item${jpSelection.size!==1?'s':''} selected`;
+}
+
+function applyJpFilter(){
+  renderMarket();
+  const count = jpSelection.size;
+  toast(count === 0 ? 'Showing all items' : `Filtered to ${count} selected item${count!==1?'s':''}`, 'ok');
+}
+
+function clearJpFilter(){
+  jpSelection.clear();
+  buildJpItemGrid();
+  updateJpCount();
+  renderMarket();
+}
+
+function saveJpFavorite(){
+  const nameEl = document.getElementById('jp-save-name');
+  const favName = (nameEl?.value || '').trim();
+  if(!favName){ toast('Enter a name for this favorite', 'err'); return; }
+  if(jpSelection.size === 0){ toast('Select some items first', 'err'); return; }
+
+  // Remove existing fav with same name
+  jpFavorites = jpFavorites.filter(f => f.name !== favName);
+  jpFavorites.push({ name: favName, items: [...jpSelection] });
+  localStorage.setItem('eve_jp_favorites', JSON.stringify(jpFavorites));
+  if(nameEl) nameEl.value = '';
+  renderJpFavorites();
+  toast(`Saved "${favName}"`, 'ok');
+}
+
+function loadJpFavorite(favName){
+  const fav = jpFavorites.find(f => f.name === favName);
+  if(!fav) return;
+  jpSelection = new Set(fav.items);
+  buildJpItemGrid();
+  updateJpCount();
+  renderMarket();
+  toast(`Loaded "${favName}"`, 'ok');
+}
+
+function deleteJpFavorite(favName){
+  jpFavorites = jpFavorites.filter(f => f.name !== favName);
+  localStorage.setItem('eve_jp_favorites', JSON.stringify(jpFavorites));
+  renderJpFavorites();
+  toast(`Deleted "${favName}"`, 'ok');
+}
+
+function renderJpFavorites(){
+  const row = document.getElementById('jp-favorites-row');
+  if(!row) return;
+  if(jpFavorites.length === 0){
+    row.innerHTML = '<div style="color:var(--text3);font-size:12px;font-family:var(--mono)">No favorites saved yet. Select items and click SAVE.</div>';
+    return;
+  }
+  row.innerHTML = jpFavorites.map(f => `
+    <div style="display:inline-flex;align-items:center;gap:0;border:1px solid var(--border2);border-radius:3px;overflow:hidden">
+      <button onclick="loadJpFavorite('${f.name.replace(/'/g,"\\'")}')"
+        style="padding:4px 10px;background:rgba(0,180,216,0.08);border:none;color:var(--accent);font-family:var(--mono);font-size:11px;cursor:pointer;font-weight:600">
+        ⬡ ${f.name}
+      </button>
+      <span style="color:var(--text3);font-size:10px;font-family:var(--mono);padding:0 6px;border-left:1px solid var(--border)">${f.items.length}i</span>
+      <button onclick="deleteJpFavorite('${f.name.replace(/'/g,"\\'")}')"
+        style="padding:4px 7px;background:transparent;border:none;border-left:1px solid var(--border);color:var(--text3);cursor:pointer;font-size:11px"
+        title="Delete">✕</button>
+    </div>`).join('');
+}
+
+// ═══════════════════════════════════════════════════
 // MARKET — Raw vs Reprocessed Profitability
 // ═══════════════════════════════════════════════════
 
@@ -1449,6 +1614,11 @@ function setMkFilter(f){
 }
 
 function renderMarket(){
+  // Build item grid and favorites on first call or after data loads
+  buildJpItemGrid();
+  renderJpFavorites();
+  updateJpCount();
+
   if(data.prices.length === 0){
     document.getElementById('mk-table-wrap').innerHTML = '<div class="empty">No price data loaded. Check your Prices sheet tab exists with Name, Type, Price Per Unit columns.</div>';
     return;
@@ -1538,6 +1708,8 @@ function renderMarket(){
   // ── Filter ──
   let filtered = rows;
   if(mkFilter !== 'all') filtered = filtered.filter(r => r.type === mkFilter);
+  // Apply jump point selection (empty set = show all)
+  if(jpSelection.size > 0) filtered = filtered.filter(r => jpSelection.has(r.name));
 
   // ── Sort ──
   const sortVal = document.getElementById('mk-sort')?.value || 'reprocessed';
@@ -1632,17 +1804,13 @@ function toast(msg, type='ok'){
 }
 
 // ═══════════════════════════════════════════════════
-// END OF DAY WEALTH TRACKER
+// END OF DAY WEALTH TRACKER — pure SVG, no Chart.js
 // ═══════════════════════════════════════════════════
-let eodMainChart = null;
-let eodDeltaChart = null;
-
 function setEodRange(range){
   eodRange = range;
-  // Update button active styles
   ['all','90','30','7'].forEach(r => {
     const btn = document.getElementById(`eod-btn-${r}`);
-    if(btn) btn.style.borderColor = String(range) === r ? 'var(--accent)' : '';
+    if(btn) btn.style.borderColor = String(range) === String(r) ? 'var(--accent)' : '';
   });
   renderEndOfDay();
 }
@@ -1655,19 +1823,107 @@ function getEodSlice(){
   return all.filter(e => new Date(e.date) >= cutoff);
 }
 
+function makeSVGLine(slice, w, h, pad){
+  if(slice.length < 2) return '';
+  const vals = slice.map(e => e.isk);
+  const minV = Math.min(...vals);
+  const maxV = Math.max(...vals);
+  const range = maxV - minV || 1;
+  const toX = i => pad + (i / (slice.length - 1)) * (w - pad * 2);
+  const toY = v => pad + (1 - (v - minV) / range) * (h - pad * 2);
+
+  // Y grid lines + labels
+  const steps = 5;
+  let gridSVG = '';
+  for(let i = 0; i <= steps; i++){
+    const v = minV + (range * i / steps);
+    const y = toY(v);
+    gridSVG += `<line x1="${pad}" y1="${y}" x2="${w - pad}" y2="${y}" stroke="rgba(30,58,90,0.5)" stroke-width="1"/>`;
+    gridSVG += `<text x="${pad - 6}" y="${y + 4}" text-anchor="end" font-size="9" fill="#4a6a8a" font-family="Share Tech Mono,monospace">${formatISK(v)}</text>`;
+  }
+
+  // X labels (show up to 10 evenly spaced)
+  const xStep = Math.ceil(slice.length / 10);
+  let xLabels = '';
+  slice.forEach((e, i) => {
+    if(i % xStep !== 0 && i !== slice.length - 1) return;
+    xLabels += `<text x="${toX(i)}" y="${h - 4}" text-anchor="middle" font-size="9" fill="#4a6a8a" font-family="Share Tech Mono,monospace">${e.date.slice(5)}</text>`;
+  });
+
+  // Area fill path
+  const pts = slice.map((e, i) => `${toX(i)},${toY(e.isk)}`).join(' ');
+  const firstX = toX(0), lastX = toX(slice.length - 1), baseY = toY(minV);
+  const areaPath = `M${firstX},${baseY} L${pts.split(' ').map((p,i) => (i===0?'L':'') + p).join(' L')} L${lastX},${baseY} Z`
+    .replace('M','M').replace('L L','L');
+
+  // Simpler area: polyline approach
+  const linePoints = slice.map((e, i) => `${toX(i)},${toY(e.isk)}`).join(' ');
+  const areaPoints = `${toX(0)},${baseY} ${linePoints} ${toX(slice.length-1)},${baseY}`;
+
+  // Tooltip dots
+  const dots = slice.map((e, i) => {
+    const isLast = i === slice.length - 1;
+    return `<circle cx="${toX(i)}" cy="${toY(e.isk)}" r="${isLast ? 5 : 3}" fill="#00b4d8" stroke="#04080f" stroke-width="1.5" opacity="${isLast?1:0.7}">
+      <title>${e.date}: ${formatISK(e.isk)} ISK</title>
+    </circle>`;
+  }).join('');
+
+  return `
+    <defs>
+      <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#00b4d8" stop-opacity="0.25"/>
+        <stop offset="100%" stop-color="#00b4d8" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+    ${gridSVG}
+    ${xLabels}
+    <polygon points="${areaPoints}" fill="url(#areaGrad)"/>
+    <polyline points="${linePoints}" fill="none" stroke="#00b4d8" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    ${dots}`;
+}
+
+function makeSVGBars(slice, w, h, pad){
+  if(slice.length < 2) return '';
+  const deltas = slice.map((e, i) => i === 0 ? 0 : e.isk - slice[i-1].isk);
+  const maxAbs = Math.max(...deltas.map(d => Math.abs(d)), 1);
+  const barW = Math.max(2, Math.floor((w - pad * 2) / slice.length) - 2);
+  const midY = pad + (h - pad * 2) / 2;
+
+  let bars = '';
+  deltas.forEach((d, i) => {
+    const x = pad + (i / slice.length) * (w - pad * 2);
+    const barH = Math.abs(d) / maxAbs * ((h - pad * 2) / 2);
+    const y = d >= 0 ? midY - barH : midY;
+    const col = d >= 0 ? '#39d353' : '#ff4d6d';
+    bars += `<rect x="${x}" y="${y}" width="${barW}" height="${Math.max(barH,1)}" fill="${col}" opacity="0.8" rx="1">
+      <title>${slice[i].date}: ${d >= 0 ? '+' : ''}${formatISK(d)} ISK</title>
+    </rect>`;
+  });
+
+  // Zero line
+  const zeroLine = `<line x1="${pad}" y1="${midY}" x2="${w-pad}" y2="${midY}" stroke="rgba(30,58,90,0.8)" stroke-width="1"/>`;
+
+  // Y labels
+  const yLabels = `
+    <text x="${pad-4}" y="${pad+4}" text-anchor="end" font-size="9" fill="#39d353" font-family="Share Tech Mono,monospace">+${formatISK(maxAbs)}</text>
+    <text x="${pad-4}" y="${h-pad+4}" text-anchor="end" font-size="9" fill="#ff4d6d" font-family="Share Tech Mono,monospace">-${formatISK(maxAbs)}</text>`;
+
+  return zeroLine + yLabels + bars;
+}
+
 function renderEndOfDay(){
   const all = data.endOfDay;
   if(all.length === 0){
-    document.getElementById('eod-current').textContent = '—';
-    document.getElementById('eod-ath').textContent = '—';
-    document.getElementById('eod-7d').textContent = '—';
-    document.getElementById('eod-30d').textContent = '—';
-    document.getElementById('eod-table-wrap').innerHTML = '<div class="empty">No End of Day data loaded.</div>';
+    ['eod-current','eod-ath','eod-7d','eod-30d'].forEach(id => {
+      const el = document.getElementById(id); if(el) el.textContent = '—';
+    });
+    const tw = document.getElementById('eod-table-wrap');
+    if(tw) tw.innerHTML = '<div class="empty">No End of Day data loaded.</div>';
     return;
   }
 
   // ── Stat cards ──
-  const latest = all[all.length - 1];
+  const latest  = all[all.length - 1];
   const athEntry = all.reduce((best, e) => e.isk > best.isk ? e : best, all[0]);
 
   document.getElementById('eod-current').textContent      = formatISK(latest.isk);
@@ -1679,151 +1935,40 @@ function renderEndOfDay(){
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - daysBack);
     const past = [...all].reverse().find(e => new Date(e.date) <= cutoff);
-    if(!past){ document.getElementById(elVal).textContent='—'; document.getElementById(elSub).textContent=''; return; }
+    const elV = document.getElementById(elVal);
+    const elS = document.getElementById(elSub);
+    if(!past){ if(elV) elV.textContent='—'; if(elS) elS.textContent=''; return; }
     const diff = latest.isk - past.isk;
     const pct  = past.isk > 0 ? ((diff / past.isk) * 100).toFixed(1) : '0';
     const col  = diff >= 0 ? 'var(--green)' : 'var(--red)';
     const sign = diff >= 0 ? '+' : '';
-    document.getElementById(elVal).textContent      = sign + formatISK(diff);
-    document.getElementById(elVal).style.color      = col;
-    document.getElementById(elSub).textContent      = `${sign}${pct}% vs ${daysBack}d ago`;
-    document.getElementById(elSub).style.color      = col;
+    if(elV){ elV.textContent = sign + formatISK(diff); elV.style.color = col; }
+    if(elS){ elS.textContent = `${sign}${pct}% vs ${daysBack}d ago`; elS.style.color = col; }
   }
   changeStats(7,  'eod-7d',  'eod-7d-sub');
   changeStats(30, 'eod-30d', 'eod-30d-sub');
 
-  // ── Get sliced data for charts ──
+  // ── SVG charts ──
   const slice = getEodSlice();
-  const labels = slice.map(e => e.date);
-  const values = slice.map(e => e.isk);
+  const W = 860, H = 280, PAD = 54;
+  const W2 = 860, H2 = 200, PAD2 = 54;
 
-  // ── Deltas (day-over-day change) ──
-  const deltas = slice.map((e, i) => i === 0 ? 0 : e.isk - slice[i-1].isk);
-  const deltaColors = deltas.map(d => d >= 0 ? 'rgba(57,211,83,0.7)' : 'rgba(255,77,109,0.7)');
-  const deltaBorders = deltas.map(d => d >= 0 ? '#39d353' : '#ff4d6d');
+  const mainChartEl = document.getElementById('eod-main-svg');
+  if(mainChartEl) mainChartEl.innerHTML = makeSVGLine(slice, W, H, PAD);
 
-  // ── Main line chart ──
-  const ctx1 = document.getElementById('eod-chart').getContext('2d');
-  if(eodMainChart) eodMainChart.destroy();
+  const deltaChartEl = document.getElementById('eod-delta-svg');
+  if(deltaChartEl) deltaChartEl.innerHTML = makeSVGBars(slice, W2, H2, PAD2);
 
-  // Build gradient fill
-  const grad = ctx1.createLinearGradient(0, 0, 0, 300);
-  grad.addColorStop(0, 'rgba(0,180,216,0.25)');
-  grad.addColorStop(1, 'rgba(0,180,216,0)');
-
-  eodMainChart = new Chart(ctx1, {
-    type: 'line',
-    data: {
-      labels,
-      datasets: [{
-        label: 'ISK Balance',
-        data: values,
-        borderColor: '#00b4d8',
-        borderWidth: 2,
-        backgroundColor: grad,
-        fill: true,
-        tension: 0.3,
-        pointRadius: slice.length > 30 ? 2 : 4,
-        pointBackgroundColor: '#00b4d8',
-        pointBorderColor: '#04080f',
-        pointBorderWidth: 1,
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          backgroundColor: '#0f1c30',
-          borderColor: '#1e3a5a',
-          borderWidth: 1,
-          titleColor: '#8ba7c9',
-          bodyColor: '#e8b84b',
-          titleFont: { family: "'Share Tech Mono'" },
-          bodyFont:  { family: "'Share Tech Mono'" },
-          callbacks: {
-            label: ctx => ' ' + formatISK(ctx.raw) + ' ISK',
-          }
-        }
-      },
-      scales: {
-        x: {
-          ticks: { color: '#4a6a8a', font: { family: "'Share Tech Mono'", size: 10 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 12 },
-          grid:  { color: 'rgba(30,58,90,0.4)' },
-        },
-        y: {
-          ticks: { color: '#4a6a8a', font: { family: "'Share Tech Mono'", size: 10 }, callback: v => formatISK(v) },
-          grid:  { color: 'rgba(30,58,90,0.4)' },
-        }
-      }
-    }
-  });
-
-  // ── Daily delta bar chart ──
-  const ctx2 = document.getElementById('eod-delta-chart').getContext('2d');
-  if(eodDeltaChart) eodDeltaChart.destroy();
-
-  eodDeltaChart = new Chart(ctx2, {
-    type: 'bar',
-    data: {
-      labels,
-      datasets: [{
-        label: 'Daily Change',
-        data: deltas,
-        backgroundColor: deltaColors,
-        borderColor: deltaBorders,
-        borderWidth: 1,
-        borderRadius: 2,
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          backgroundColor: '#0f1c30',
-          borderColor: '#1e3a5a',
-          borderWidth: 1,
-          titleColor: '#8ba7c9',
-          bodyColor: '#ccd6f6',
-          titleFont: { family: "'Share Tech Mono'" },
-          bodyFont:  { family: "'Share Tech Mono'" },
-          callbacks: {
-            label: ctx => {
-              const v = ctx.raw;
-              return ' ' + (v >= 0 ? '+' : '') + formatISK(v) + ' ISK';
-            }
-          }
-        }
-      },
-      scales: {
-        x: {
-          ticks: { color: '#4a6a8a', font: { family: "'Share Tech Mono'", size: 10 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 10 },
-          grid:  { color: 'rgba(30,58,90,0.3)' },
-        },
-        y: {
-          ticks: { color: '#4a6a8a', font: { family: "'Share Tech Mono'", size: 10 }, callback: v => formatISK(v) },
-          grid:  { color: 'rgba(30,58,90,0.3)' },
-        }
-      }
-    }
-  });
-
-  // ── Log table (newest first) ──
+  // ── Log table ──
   const wrap = document.getElementById('eod-table-wrap');
+  if(!wrap) return;
   const reversed = [...all].reverse();
   const prevMap = {};
-  all.forEach((e,i) => { if(i > 0) prevMap[e.date] = all[i-1].isk; });
+  all.forEach((e, i) => { if(i > 0) prevMap[e.date] = all[i-1].isk; });
 
   wrap.innerHTML = `<table>
     <thead><tr>
-      <th>Date</th>
-      <th>ISK Balance</th>
-      <th>Day Change</th>
-      <th>% Change</th>
+      <th>Date</th><th>ISK Balance</th><th>Day Change</th><th>% Change</th>
     </tr></thead>
     <tbody>${reversed.map(e => {
       const prev = prevMap[e.date];
@@ -1840,9 +1985,9 @@ function renderEndOfDay(){
     }).join('')}</tbody>
   </table>`;
 
-  // Highlight active range button
   setEodRange(eodRange);
 }
+
 
 // ═══════════════════════════════════════════════════
 // INIT
